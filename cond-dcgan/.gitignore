@@ -1,0 +1,4 @@
+images
+dist
+*.png
+__pycache__

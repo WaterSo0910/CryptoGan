@@ -1,0 +1,5 @@
+images
+dist
+*.png
+**__pycache__
+*.pt
