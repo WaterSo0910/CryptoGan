@@ -6,6 +6,7 @@
    - single-target `Progressing`
       - [Filling Time series with DCGAN](https://github.com/WaterSo0910/CryptoGan/tree/main/cond-dcgan)
    - multi-target `Not started`
+
 2. Price prediction
    - single-target `Not started`
    - multi-target `Progressing`
