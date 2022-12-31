@@ -4,12 +4,12 @@
 
 1. Price filling
    - single-target `Progressing`
-      - [Filling Time series with DCGAN](https://github.com/WaterSo0910/CryptoGan/cond-dcgan)
+      - [Filling Time series with DCGAN](https://github.com/WaterSo0910/CryptoGan/tree/main/cond-dcgan)
    - multi-target `Not started`
 2. Price prediction
    - single-target `Not started`
    - multi-target `Progressing`
-      - [Multi-target time series prediction with GAN](https://github.com/WaterSo0910/CryptoGan/sgan)
+      - [Multi-target time series prediction with GAN](https://github.com/WaterSo0910/CryptoGan/tree/main/sgan)
 
 ## Reference
 
