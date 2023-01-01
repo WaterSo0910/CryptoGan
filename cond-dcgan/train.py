@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 parser.add_argument("--datapath", default="../data/Binance_ETHUSDT_1h.csv", type=str)
 parser.add_argument("--image_path", default="images", type=str)
 parser.add_argument("--dist_path", default="dist", type=str)
-parser.add_argument("--mask_at", default="random", type=str)  # random / end
+parser.add_argument("--mask_where", default="random", type=str)  # random / end
 parser.add_argument("--mask_rate", default=0.4, type=float)
 parser.add_argument("--test_size", default=0.3, type=float)
 parser.add_argument("--seq_len", default=64, type=int)

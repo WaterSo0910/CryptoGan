@@ -54,7 +54,7 @@ def plot_res(args, fake: list, real: list, mask: list, **kwargs):
     fig.add_trace(
         go.Scatter(
             x=list(range(args.seq_len)),
-            y=[f if mask[i] == 1 else None for i, f in enumerate(fake)],
+            y=[f if mask[i] == 0 else None for i, f in enumerate(fake)],
             mode="markers",
             name="Generate",
             marker_color="#66428a",

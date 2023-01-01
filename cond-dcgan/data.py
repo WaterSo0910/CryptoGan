@@ -21,7 +21,7 @@ def process_data(path, window_size, test_size):
     df = df.filter(items=["Date", "Close"])
     df["Date"] = pd.to_datetime(df["Date"])
 
-    df["Close"] = np.log10(df["Close"])
+    # df["Close"] = np.log10(df["Close"])
     # log scaling
     train_data, test_data = tseries_train_test_split(
         df.values, test_size=test_size, window_size=window_size
@@ -29,14 +29,29 @@ def process_data(path, window_size, test_size):
     return train_data, test_data
 
 
-def mask_data(inputs: torch.Tensor, mask_prob=0.3):
-    masks = torch.bernoulli(torch.full(inputs.shape, 1 - mask_prob))
-    return masks
+def mask_data(inputs: torch.Tensor, mask_where="random", mask_prob=0.3):
+    if mask_where == "random":
+        masks = torch.bernoulli(torch.full(inputs.shape, 1 - mask_prob))
+        return masks
+    elif mask_where == "end":
+        seq_len = inputs.shape[1]
+        masks = torch.ones_like(inputs)
+        masks[:, int(seq_len * (1 - mask_prob)) :] = 0
+        return masks
+    raise ValueError(
+        "Mask method should be random or end, but got {}".format(mask_where)
+    )
 
 
 class CrytoDataset(td.Dataset):
     def __init__(
-        self, path: str, mode="train", test_size=0.2, window_size=50, mask_prob=0.4
+        self,
+        path: str,
+        mode="train",
+        test_size=0.2,
+        window_size=50,
+        mask_prob=0.4,
+        mask_where="random",
     ):
         assert mode in ["train", "test"]
         self.train_data, self.test_data = process_data(
@@ -44,22 +59,21 @@ class CrytoDataset(td.Dataset):
         )
         self.inputs = self.train_data if mode == "train" else self.test_data
         self.inputs = torch.Tensor(self.inputs)
-        self.masks = mask_data(self.inputs, mask_prob=mask_prob)
+        self.masks = mask_data(self.inputs, mask_prob=mask_prob, mask_where=mask_where)
         self.labels = self.inputs.clone()
 
     def __len__(self):
         return len(self.inputs)
 
     def __getitem__(self, idx):
-        scaler = MinMaxScaler(feature_range=(-1, 1)).fit(
-            self.labels[idx].reshape(-1, 1)
-        )
-        label = scaler.transform(self.labels[idx].reshape(-1, 1)).reshape(-1)
-        input = scaler.transform(self.inputs[idx].reshape(-1, 1)).reshape(-1)
-        input = torch.FloatTensor(input)
+        input = self.inputs[idx]
+        label = self.labels[idx]
         mask = self.masks[idx]
-        s = torch.randn(input.size())
-        input[~mask.bool()] = s[~mask.bool()]
+
+        input[~mask.bool()] = input[mask.bool()].sum() / mask.sum()
+        scaler = MinMaxScaler().fit(input.reshape(-1, 1))
+        label = scaler.transform(label.reshape(-1, 1)).reshape(-1)
+        input = scaler.transform(input.reshape(-1, 1)).reshape(-1)
         return (
             torch.FloatTensor(input),
             torch.FloatTensor(mask),
@@ -74,6 +88,7 @@ def data_loader(args, mode):
         test_size=args.test_size,
         window_size=args.seq_len,
         mask_prob=args.mask_rate,
+        mask_where=args.mask_where,
     )
     dloader = td.DataLoader(dset, batch_size=args.batch_size, shuffle=True)
     return dset, dloader
