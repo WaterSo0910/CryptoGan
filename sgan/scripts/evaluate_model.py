@@ -6,17 +6,20 @@ from attrdict import AttrDict
 
 from sgan.data.loader import data_loader
 from sgan.models import TrajectoryGenerator
-from sgan.losses import displacement_error, final_displacement_error
-from sgan.utils import relative_to_abs, get_dset_path
+from sgan.losses import (
+    displacement_error,
+    final_displacement_error,
+    mean_abs_percentage_error,
+)
+from sgan.utils import relative_to_abs
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str)
-parser.add_argument('--num_samples', default=20, type=int)
-parser.add_argument('--dset_type', default='test', type=str)
+parser.add_argument("--model_path", type=str)
+parser.add_argument("--num_samples", default=20, type=int)
 
 
 def get_generator(checkpoint):
-    args = AttrDict(checkpoint['args'])
+    args = AttrDict(checkpoint["args"])
     generator = TrajectoryGenerator(
         obs_len=args.obs_len,
         pred_len=args.pred_len,
@@ -34,8 +37,9 @@ def get_generator(checkpoint):
         bottleneck_dim=args.bottleneck_dim,
         neighborhood_size=args.neighborhood_size,
         grid_size=args.grid_size,
-        batch_norm=args.batch_norm)
-    generator.load_state_dict(checkpoint['g_state'])
+        batch_norm=args.batch_norm,
+    )
+    generator.load_state_dict(checkpoint["g_state"])
     generator.cuda()
     generator.train()
     return generator
@@ -49,6 +53,7 @@ def evaluate_helper(error, seq_start_end):
         start = start.item()
         end = end.item()
         _error = error[start:end]
+        print(start, end)
         _error = torch.sum(_error, dim=0)
         _error = torch.min(_error)
         sum_ += _error
@@ -61,25 +66,32 @@ def evaluate(args, loader, generator, num_samples):
     with torch.no_grad():
         for batch in loader:
             batch = [tensor.cuda() for tensor in batch]
-            (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel,
-             non_linear_ped, loss_mask, seq_start_end) = batch
+            (
+                obs_traj,
+                pred_traj_gt,
+                obs_traj_rel,
+                pred_traj_gt_rel,
+                non_linear_ped,
+                loss_mask,
+                seq_start_end,
+            ) = batch
 
             ade, fde = [], []
+            mape = []
             total_traj += pred_traj_gt.size(1)
 
             for _ in range(num_samples):
-                pred_traj_fake_rel = generator(
-                    obs_traj, obs_traj_rel, seq_start_end
+                pred_traj_fake_rel = generator(obs_traj, obs_traj_rel, seq_start_end)
+                pred_traj_fake = relative_to_abs(pred_traj_fake_rel, obs_traj[-1])
+                ade.append(displacement_error(pred_traj_fake, pred_traj_gt, mode="raw"))
+                fde.append(
+                    final_displacement_error(
+                        pred_traj_fake[-1], pred_traj_gt[-1], mode="raw"
+                    )
                 )
-                pred_traj_fake = relative_to_abs(
-                    pred_traj_fake_rel, obs_traj[-1]
+                mape.append(
+                    mean_abs_percentage_error(pred_traj_fake, pred_traj_gt, loss_mask)
                 )
-                ade.append(displacement_error(
-                    pred_traj_fake, pred_traj_gt, mode='raw'
-                ))
-                fde.append(final_displacement_error(
-                    pred_traj_fake[-1], pred_traj_gt[-1], mode='raw'
-                ))
 
             ade_sum = evaluate_helper(ade, seq_start_end)
             fde_sum = evaluate_helper(fde, seq_start_end)
@@ -95,23 +107,23 @@ def main(args):
     if os.path.isdir(args.model_path):
         filenames = os.listdir(args.model_path)
         filenames.sort()
-        paths = [
-            os.path.join(args.model_path, file_) for file_ in filenames
-        ]
+        paths = [os.path.join(args.model_path, file_) for file_ in filenames]
     else:
         paths = [args.model_path]
 
     for path in paths:
         checkpoint = torch.load(path)
         generator = get_generator(checkpoint)
-        _args = AttrDict(checkpoint['args'])
-        path = get_dset_path(_args.dataset_name, args.dset_type)
-        _, loader = data_loader(_args, path)
+        _args = AttrDict(checkpoint["args"])
+        _, loader = data_loader(_args, mode="val")
         ade, fde = evaluate(_args, loader, generator, args.num_samples)
-        print('Dataset: {}, Pred Len: {}, ADE: {:.2f}, FDE: {:.2f}'.format(
-            _args.dataset_name, _args.pred_len, ade, fde))
+        print(
+            "Obs Len: {}, Pred Len: {}, ADE: {:.2f}, FDE: {:.2f}".format(
+                _args.obs_len, _args.pred_len, ade, fde
+            )
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parser.parse_args()
     main(args)

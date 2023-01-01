@@ -73,6 +73,25 @@ def l2_loss(pred_traj, pred_traj_gt, loss_mask, random=0, mode="average"):
         return loss.sum(dim=2).sum(dim=1)
 
 
+def mean_abs_percentage_error(pred_traj, pred_traj_gt, loss_mask):
+    """
+    Input:
+    - pred_traj: Tensor of shape (seq_len, batch, 2). Predicted trajectory.
+    - pred_traj_gt: Tensor of shape (seq_len, batch, 2). Groud truth
+    predictions.
+    - loss_mask: Tensor of shape (batch, seq_len)
+    Output:
+    - loss: mape loss
+    """
+    seq_len, batch, _ = pred_traj.size()
+    print(pred_traj.size(), pred_traj_gt.size(), loss_mask.size())
+    loss = loss_mask.unsqueeze(dim=2) * (
+        torch.abs(pred_traj_gt.permute(1, 0, 2) - pred_traj.permute(1, 0, 2))
+        / pred_traj_gt.permute(1, 0, 2)
+    )
+    return torch.sum(loss) / torch.numel(loss_mask.data)
+
+
 def displacement_error(pred_traj, pred_traj_gt, consider_ped=None, mode="sum"):
     """
     Input:

@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 # My pkg
-from data import CrytoDataset
+from data import data_loader
 from models import Generator, Discriminator
 from trainer import Trainer
 from utils import plot_dist
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 # Dataset options
-parser.add_argument("--datapath", default="./data/Binance_ETHUSDT_1h.csv", type=str)
+parser.add_argument("--datapath", default="../data/Binance_ETHUSDT_1h.csv", type=str)
 parser.add_argument("--image_path", default="images", type=str)
 parser.add_argument("--dist_path", default="dist", type=str)
 parser.add_argument("--mask_at", default="random", type=str)  # random / end
@@ -59,8 +59,11 @@ parser.add_argument("--ngf", default=64, type=int)
 parser.add_argument("--ndf", default=64, type=int)
 parser.add_argument("--learning_rate", default=2e-4, type=float)
 
-# Print option
-parser.add_argument("--print_every", default=1000, type=int)
+# Output option
+parser.add_argument("--print_every", default=200, type=int)
+parser.add_argument("--checkpoint_every", default=1000, type=int)
+parser.add_argument("--checkpoint", type=str)
+parser.add_argument("--checkpoint_path", default="checkpoints", type=str)
 
 ngpu = 1
 
@@ -68,27 +71,10 @@ ngpu = 1
 def main(args):
     os.makedirs(args.image_path, exist_ok=True)
     os.makedirs(args.dist_path, exist_ok=True)
+    os.makedirs(args.checkpoint_path, exist_ok=True)
     # Create the dataset
-    train_dataset = CrytoDataset(
-        path=args.datapath,
-        mode="train",
-        test_size=args.test_size,
-        window_size=args.seq_len,
-        mask_prob=args.mask_rate,
-    )
-    test_dataset = CrytoDataset(
-        path=args.datapath,
-        mode="test",
-        test_size=args.test_size,
-        window_size=args.seq_len,
-        mask_prob=args.mask_rate,
-    )
-    train_dataloader = td.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True
-    )
-    test_dataloader = td.DataLoader(
-        test_dataset, batch_size=args.batch_size, shuffle=True
-    )
+    _, train_dataloader = data_loader(args, mode="train")
+
     device = torch.device("cuda:0")
 
     def weights_init(m):
@@ -98,6 +84,8 @@ def main(args):
         elif classname.find("BatchNorm") != -1:
             nn.init.normal_(m.weight.data, 1.0, 0.02)
             nn.init.constant_(m.bias.data, 0)
+        elif classname.find("Linear") != -1:
+            nn.init.kaiming_normal_(m.weight)
 
     # Create the generator
     netG = Generator(
@@ -120,7 +108,7 @@ def main(args):
     logger.info(netD)
 
     criterion = nn.BCELoss()
-    fixed_noise = torch.randn(args.batch_size, args.noise_dim, 1, 1, device=device)
+    # fixed_noise = torch.randn(args.batch_size, args.noise_dim, 1, 1, device=device)
 
     optimizerD = optim.Adam(
         netD.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
@@ -128,6 +116,15 @@ def main(args):
     optimizerG = optim.Adam(
         netG.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
     )
+    if args.checkpoint is not None:
+        restore_path = args.checkpoint
+        logger.info("Restoring from checkpoint {}".format(restore_path))
+        checkpoint = torch.load(restore_path)
+        netG.load_state_dict(checkpoint["g_state"])
+        netD.load_state_dict(checkpoint["d_state"])
+        optimizerG.load_state_dict(checkpoint["g_optim_state"])
+        optimizerD.load_state_dict(checkpoint["d_optim_state"])
+
     trainer = Trainer(
         train_dataloader=train_dataloader,
         netD=netD,
@@ -140,13 +137,12 @@ def main(args):
         nz=args.noise_dim,
         timeseries_size=args.seq_len,
         num_epochs=args.num_epochs,
+        real_label=0.9,
+        fake_label=0.1,
     )
 
     G_losses, D_losses = trainer.train(
         args=args,
-        real_label=0.9,
-        fake_label=0.1,
-        print_every=args.print_every,
     )
     logger.info("Plot distribution")
     plot_dist(G_losses, D_losses)

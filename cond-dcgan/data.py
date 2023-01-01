@@ -65,3 +65,15 @@ class CrytoDataset(td.Dataset):
             torch.FloatTensor(mask),
             torch.FloatTensor(label),
         )
+
+
+def data_loader(args, mode):
+    dset = CrytoDataset(
+        path=args.datapath,
+        mode=mode,
+        test_size=args.test_size,
+        window_size=args.seq_len,
+        mask_prob=args.mask_rate,
+    )
+    dloader = td.DataLoader(dset, batch_size=args.batch_size, shuffle=True)
+    return dset, dloader
