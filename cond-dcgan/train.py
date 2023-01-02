@@ -22,8 +22,8 @@ import pandas as pd
 
 # My pkg
 from data import data_loader
-from models import Generator, Discriminator
-from trainer import Trainer
+from models import Generator, Discriminator, LSTM
+from trainer import Trainer, LSTMTrainer
 from utils import plot_dist
 
 manualSeed = 880910
@@ -53,11 +53,18 @@ parser.add_argument("--num_iterations", default=10000, type=int)
 parser.add_argument("--num_epochs", default=200, type=int)
 
 # Model Options
+parser.add_argument("--model", default="cond-dcgan", type=str)
 parser.add_argument("--input_dim", default=1, type=int)
 parser.add_argument("--noise_dim", default=10, type=int)
 parser.add_argument("--ngf", default=64, type=int)
 parser.add_argument("--ndf", default=64, type=int)
 parser.add_argument("--learning_rate", default=2e-4, type=float)
+
+# LSTM option
+parser.add_argument("--num_layers", default=1, type=int)
+parser.add_argument("--hidden_size", default=64, type=int)
+parser.add_argument("--dropout", default=0.0, type=float)
+
 
 # Output option
 parser.add_argument("--print_every", default=200, type=int)
@@ -74,78 +81,107 @@ def main(args):
     os.makedirs(args.checkpoint_path, exist_ok=True)
     # Create the dataset
     _, train_dataloader = data_loader(args, mode="train")
+    _, test_dataloader = data_loader(args, mode="test")
 
     device = torch.device("cuda:0")
+    if args.model == "cond-dcgan":
 
-    def weights_init(m):
-        classname = m.__class__.__name__
-        if classname.find("Conv") != -1:
-            nn.init.normal_(m.weight.data, 0.0, 0.02)
-        elif classname.find("BatchNorm") != -1:
-            nn.init.normal_(m.weight.data, 1.0, 0.02)
-            nn.init.constant_(m.bias.data, 0)
-        elif classname.find("Linear") != -1:
-            nn.init.kaiming_normal_(m.weight)
+        def weights_init(m):
+            classname = m.__class__.__name__
+            if classname.find("Conv") != -1:
+                nn.init.normal_(m.weight.data, 0.0, 0.02)
+            elif classname.find("BatchNorm") != -1:
+                nn.init.normal_(m.weight.data, 1.0, 0.02)
+                nn.init.constant_(m.bias.data, 0)
+            elif classname.find("Linear") != -1:
+                nn.init.kaiming_normal_(m.weight)
 
-    # Create the generator
-    netG = Generator(
-        ngpu=ngpu,
-        input_dim=args.input_dim,
-        noise_dim=args.noise_dim,
-        ngf=args.ngf,
-        seq_len=args.seq_len,
-    ).to(device)
-    netG.apply(weights_init)
-    logger.info(netG)
+        # Create the generator
+        netG = Generator(
+            ngpu=ngpu,
+            input_dim=args.input_dim,
+            noise_dim=args.noise_dim,
+            ngf=args.ngf,
+            seq_len=args.seq_len,
+        ).to(device)
+        netG.apply(weights_init)
+        logger.info(netG)
 
-    # Create the Discriminator
-    netD = Discriminator(
-        ngpu=ngpu,
-        input_dim=args.input_dim,
-        ndf=args.ndf,
-    ).to(device)
-    netD.apply(weights_init)
-    logger.info(netD)
+        # Create the Discriminator
+        netD = Discriminator(
+            ngpu=ngpu,
+            input_dim=args.input_dim,
+            ndf=args.ndf,
+        ).to(device)
+        netD.apply(weights_init)
+        logger.info(netD)
+        criterion = nn.BCELoss()
+        optimizerD = optim.Adam(
+            netD.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
+        )
+        optimizerG = optim.Adam(
+            netG.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
+        )
+        if args.checkpoint is not None:
+            restore_path = args.checkpoint
+            logger.info("Restoring from checkpoint {}".format(restore_path))
+            checkpoint = torch.load(restore_path)
+            netG.load_state_dict(checkpoint["g_state"])
+            netD.load_state_dict(checkpoint["d_state"])
+            optimizerG.load_state_dict(checkpoint["g_optim_state"])
+            optimizerD.load_state_dict(checkpoint["d_optim_state"])
 
-    criterion = nn.BCELoss()
-    # fixed_noise = torch.randn(args.batch_size, args.noise_dim, 1, 1, device=device)
+        trainer = Trainer(
+            train_dataloader=train_dataloader,
+            netD=netD,
+            netG=netG,
+            optimizerD=optimizerD,
+            optimizerG=optimizerG,
+            device=device,
+            criterion=criterion,
+            nc=args.input_dim,
+            nz=args.noise_dim,
+            timeseries_size=args.seq_len,
+            num_epochs=args.num_epochs,
+            real_label=0.9,
+            fake_label=0.1,
+        )
 
-    optimizerD = optim.Adam(
-        netD.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
-    )
-    optimizerG = optim.Adam(
-        netG.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
-    )
-    if args.checkpoint is not None:
-        restore_path = args.checkpoint
-        logger.info("Restoring from checkpoint {}".format(restore_path))
-        checkpoint = torch.load(restore_path)
-        netG.load_state_dict(checkpoint["g_state"])
-        netD.load_state_dict(checkpoint["d_state"])
-        optimizerG.load_state_dict(checkpoint["g_optim_state"])
-        optimizerD.load_state_dict(checkpoint["d_optim_state"])
-
-    trainer = Trainer(
-        train_dataloader=train_dataloader,
-        netD=netD,
-        netG=netG,
-        optimizerD=optimizerD,
-        optimizerG=optimizerG,
-        device=device,
-        criterion=criterion,
-        nc=args.input_dim,
-        nz=args.noise_dim,
-        timeseries_size=args.seq_len,
-        num_epochs=args.num_epochs,
-        real_label=0.9,
-        fake_label=0.1,
-    )
-
-    G_losses, D_losses = trainer.train(
-        args=args,
-    )
-    logger.info("Plot distribution")
-    plot_dist(G_losses, D_losses)
+        G_losses, D_losses = trainer.train(
+            args=args,
+        )
+        logger.info("Plot distribution")
+        plot_dist(G_losses, D_losses)
+    elif args.model == "lstm":
+        obs_len = int(args.seq_len * (1 - args.mask_rate))
+        pred_len = args.seq_len - obs_len
+        model = LSTM(
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            dropout=args.dropout,
+        ).to(device)
+        optimizer = optim.Adam(
+            model.parameters(), lr=args.learning_rate, betas=(0.5, 0.999)
+        )
+        criterion = nn.MSELoss()
+        if args.checkpoint is not None:
+            restore_path = args.checkpoint
+            logger.info("Restoring from checkpoint {}".format(restore_path))
+            checkpoint = torch.load(restore_path)
+            model.load_state_dict(checkpoint["state"])
+            optimizer.load_state_dict(checkpoint["optim_state"])
+        trainer = LSTMTrainer(
+            train_dataloader=train_dataloader,
+            test_dataloader=test_dataloader,
+            model=model,
+            optimizer=optimizer,
+            pred_len=pred_len,
+            obs_len=obs_len,
+            num_epochs=args.num_epochs,
+            device=device,
+            criterion=criterion,
+        )
+        trainer.train(args)
 
 
 if __name__ == "__main__":

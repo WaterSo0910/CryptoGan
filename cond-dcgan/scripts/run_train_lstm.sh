@@ -1,0 +1,16 @@
+python train.py \
+    --datapath ../data/Binance_ETHUSDT_1h.csv \
+    --model lstm \
+    --num_layers 2 \
+    --hidden_size 64 \
+    --dropout 0.0 \
+    --mask_where end \
+    --mask_rate 0.4 \
+    --test_size 0.3 \
+    --seq_len 64 \
+    --skip 1 \
+    --batch_size 128 \
+    --num_iterations 10000 \
+    --num_epochs 200 \
+    --learning_rate 1e-3 \
+    --print_every 1

@@ -34,7 +34,7 @@ class Encoder(nn.Module):
     ):
         super(Encoder, self).__init__()
 
-        self.mlp_dim = 1024
+        self.mlp_dim = mlp_dim
         self.h_dim = h_dim
         self.embedding_dim = embedding_dim
         self.num_layers = num_layers

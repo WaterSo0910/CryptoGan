@@ -5,8 +5,152 @@ from collections import defaultdict
 import torch.utils.data as td
 from torchmetrics import MeanAbsolutePercentageError
 import os
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
+
+
+class LSTMTrainer:
+    def __init__(
+        self,
+        train_dataloader: td.DataLoader,
+        test_dataloader: td.DataLoader,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        obs_len: int,
+        pred_len: int,
+        num_epochs: int,
+        device: torch.device,
+        criterion: torch.nn.Module,
+    ) -> None:
+        self.train_dataloader = train_dataloader
+        self.test_dataloader = test_dataloader
+        self.model = model
+        self.optimizer = optimizer
+        self.device = device
+        self.obs_len = obs_len
+        self.pred_len = pred_len
+        self.num_epochs = num_epochs
+        self.criterion = criterion
+        self.mape = MeanAbsolutePercentageError().to(device)
+
+    def train(self, args):
+        mapes, losses = [], []
+        best_loss = None
+        t = 0
+        checkpoint = {
+            "args": args.__dict__,
+            "losses": defaultdict(list),
+            "sample_ts": [],
+            "counters": {
+                "t": None,
+                "epoch": None,
+            },
+            "state": None,
+            "optim_state": None,
+        }
+        for epoch in range(self.num_epochs):
+            logger.info("Starting epoch {}".format(epoch))
+            for i, batch in enumerate(self.train_dataloader, 0):
+                batch = [tensor.cuda() for tensor in batch]
+                (info, mask, real) = batch
+                batch_size = real.size(0)
+                assert info.size() == torch.Size(
+                    [batch_size, self.obs_len + self.pred_len]
+                )
+                assert mask.size() == torch.Size(
+                    [batch_size, self.obs_len + self.pred_len]
+                )
+                assert real.size() == torch.Size(
+                    [batch_size, self.obs_len + self.pred_len]
+                )
+                self.model.train()
+                out = self.model(real[:, : self.obs_len, None])
+                out_gt = real[:, self.obs_len].view(-1, 1)
+                assert out_gt.size() == torch.Size([batch_size, 1]), out_gt.size()
+                self.optimizer.zero_grad()
+                assert out_gt.size() == out.size(), "{}{}".format(
+                    out_gt.size(), out.size()
+                )
+                loss = self.criterion(out, out_gt)
+                mape = self.mape(out, out_gt)
+                loss.backward()
+                self.optimizer.step()
+                losses.append(loss)
+                mapes.append(mape)
+                t += 1
+            if epoch % args.print_every == 0:
+                logger.info("t = {} / {}".format(t + 1, args.num_iterations))
+                logger.info("  Loss: {:.3f}".format(loss))
+                logger.info("  MAPE: {:.3f}".format(mape))
+                logger.info("  Total Loss: {:.3f}".format(sum(losses) / len(losses)))
+                logger.info("  Total MAPE: {:.3f}".format(sum(mapes) / len(mapes)))
+
+            val_loss, val_mape = self.validate(args, epoch=epoch + 1, iters=t + 1)
+            if best_loss == None or val_mape < best_loss:
+                best_loss = val_mape
+                checkpoint["counters"]["t"] = t
+                checkpoint["counters"]["epoch"] = epoch
+                checkpoint["sample_ts"].append(t)
+                checkpoint["state"] = self.model.state_dict()
+                checkpoint["optim_state"] = self.optimizer.state_dict()
+                checkpoint_path = os.path.join(
+                    args.checkpoint_path, f"lstm_model_{t}.pt"
+                )
+                logger.info(
+                    "Best model update ... t = {} / {}".format(
+                        t + 1, args.num_iterations
+                    )
+                )
+                logger.info("\tAvg Loss: {:.3f}".format(val_loss))
+                logger.info("\tAvg MAPE: {:.3f}".format(val_mape))
+                logger.info("Saving checkpoint to {}".format(checkpoint_path))
+                torch.save(checkpoint, checkpoint_path)
+                logger.info("Done.")
+
+    def validate(self, args, epoch, iters) -> Tuple[float, float]:
+        losses = []
+        mapes = []
+        self.model.eval()
+        with torch.no_grad():
+            for i, batch in enumerate(self.train_dataloader, 0):
+                batch = [tensor.cuda() for tensor in batch]
+                (info, mask, real) = batch
+                batch_size = real.size(0)
+                assert info.size() == torch.Size(
+                    [batch_size, self.obs_len + self.pred_len]
+                )
+                assert mask.size() == torch.Size(
+                    [batch_size, self.obs_len + self.pred_len]
+                )
+                assert real.size() == torch.Size(
+                    [batch_size, self.obs_len + self.pred_len]
+                )
+                input = real[:, : self.obs_len]
+                outs = torch.zeros(batch_size, self.pred_len).to(self.device)
+                for p in range(self.pred_len):
+                    out = self.model(input[:, :, None])
+                    outs[:, p] = out.view(-1)
+                    input = torch.concat((input, out), dim=1)
+                    input = input[:, 1:]
+                out_gt = real[:, self.obs_len :]
+                assert out_gt.size() == torch.Size([batch_size, self.pred_len])
+                assert outs.size() == torch.Size([batch_size, self.pred_len])
+                loss = self.criterion(outs, out_gt)
+                mape = self.mape(outs, out_gt)
+                losses.append(loss)
+                mapes.append(mape)
+                if i == 0:
+                    plot_res(
+                        args,
+                        real[0, : self.obs_len].view(-1).tolist()
+                        + outs[0, :].view(-1).tolist(),
+                        real[0].view(-1).tolist(),
+                        mask[0].view(-1).tolist(),
+                        epoch=epoch,
+                        iters=iters,
+                    )
+        return sum(losses) / len(losses), sum(mapes) / len(mapes)
 
 
 class Trainer:
@@ -37,8 +181,8 @@ class Trainer:
         self.num_epochs = num_epochs
         self.device = device
         self.criterion = criterion
-        self.real_label = 0.9
-        self.fake_label = 0.1
+        self.real_label = real_label
+        self.fake_label = fake_label
         self.mape = MeanAbsolutePercentageError()
 
     def d_step(self, args, info: torch.Tensor, real: torch.Tensor, noise: torch.Tensor):

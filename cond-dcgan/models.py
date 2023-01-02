@@ -81,3 +81,41 @@ class Discriminator(nn.Module):
         x2 = self.info_layers(info)
         x = torch.cat([x1, x2], 1)
         return self.main(x)
+
+
+class LSTM(nn.Module):
+    def __init__(
+        self,
+        input_size=1,
+        hidden_size=64,
+        num_layers=1,
+        dropout=0.0,
+    ):
+        super(LSTM, self).__init__()
+
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        self.input_size = input_size
+
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout,
+        )
+
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def init_hidden(self, batch):
+        return (
+            torch.zeros(self.num_layers, batch, self.hidden_size).cuda(),
+            torch.zeros(self.num_layers, batch, self.hidden_size).cuda(),
+        )
+
+    def forward(self, x):
+        h_0, c_0 = self.init_hidden(x.size(0))
+        out, (h_out, _) = self.lstm(x, (h_0, c_0))
+        out = out[:, -1, :]
+        out = self.fc(out)
+        return out
