@@ -210,11 +210,17 @@ class Trainer:
 
         return errD
 
-    def g_step(self, args, info: torch.Tensor, real: torch.Tensor, noise: torch.Tensor):
+    def g_step(
+        self,
+        args,
+        info: torch.Tensor,
+        real: torch.Tensor,
+        mask: torch.Tensor,
+        noise: torch.Tensor,
+    ):
         batch_size = real.size(0)
         info_g = info.view(-1, self.timeseries_size, self.nc)
         fake = self.netG(noise, info_g)
-        mape = self.mape(fake.detach().cpu(), real.detach().cpu())
         label = torch.full(
             (batch_size,), self.real_label, dtype=torch.float, device=self.device
         )
@@ -224,6 +230,9 @@ class Trainer:
         errG = self.criterion(output, label)
         errG.backward()
         self.optimizerG.step()
+        fake_input = fake.clone()
+        fake_input[mask.bool()] = real[mask.bool()]
+        mape = self.mape(fake_input.detach().cpu(), real.detach().cpu())
         return errG, mape
 
     # Training Loop
@@ -253,7 +262,7 @@ class Trainer:
             logger.info("Starting epoch {}".format(epoch))
             for i, data in enumerate(self.train_dataloader, 0):
                 info = data[0].to(self.device).view(-1, self.nc, self.timeseries_size)
-                mask = data[1]
+                mask = data[1].to(self.device).view(-1, self.nc, self.timeseries_size)
                 real = data[2].to(self.device).view(-1, self.nc, self.timeseries_size)
                 batch_size = real.size(0)
                 noise = torch.randn(batch_size, self.nz, device=self.device).view(
@@ -261,7 +270,7 @@ class Trainer:
                 )
                 ## D: Train with all-real batch
                 d_loss = self.d_step(args, info, real, noise)
-                g_loss, mape = self.g_step(args, info, real, noise)
+                g_loss, mape = self.g_step(args, info, real, mask, noise)
                 D_losses.append(d_loss)
                 G_losses.append(g_loss)
                 mapes.append(mape)

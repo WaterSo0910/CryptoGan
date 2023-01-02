@@ -63,9 +63,13 @@ def evaluate(args, loader, generator, num_samples):
                     .view(-1, args.noise_dim, 1)
                 )
                 fake = generator(noise, info_g)
+                fake_input = fake.clone()
+                fake_input[mask.bool()] = real[mask.bool()]
                 rand_input = filling(info, mask, method="random")
                 bfill_input = filling(info, mask, method="bfill")
-                MAPE["fake"].append(mape(fake.detach().cpu(), real.detach().cpu()))
+                MAPE["fake"].append(
+                    mape(fake_input.detach().cpu(), real.detach().cpu())
+                )
                 MAPE["rand"].append(
                     mape(rand_input.detach().cpu(), real.detach().cpu())
                 )
