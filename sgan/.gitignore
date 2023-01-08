@@ -3,3 +3,4 @@ dist
 *.png
 **__pycache__
 *.pt
+*.csv
