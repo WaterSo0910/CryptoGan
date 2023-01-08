@@ -1,18 +1,19 @@
 python train.py \
     --datapath ../data/Binance_ETHUSDT_1h.csv \
     --model cond-dcgan \
-    --mask_where end \
-    --mask_rate 0.4 \
+    --mask_where random \
+    --mask_rate 0.6 \
     --test_size 0.3 \
     --seq_len 64 \
-    --skip 1 \
-    --batch_size 128 \
-    --num_iterations 10000 \
-    --num_epochs 200 \
+    --skip 16 \
+    --batch_size 32 \
+    --num_iterations 4000 \
+    --num_epochs 100 \
     --input_dim 1 \
     --noise_dim 10 \
     --ngf 64 \
     --ndf 64 \
+    --l2_loss_weight 1.0 \
     --learning_rate 2e-4 \
-    --print_every 200 \
-    --checkpoint_every 10000
+    --print_every 500 \
+    --checkpoint_every 1000

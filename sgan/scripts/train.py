@@ -179,9 +179,7 @@ def main(args):
     if args.checkpoint_start_from is not None:
         restore_path = args.checkpoint_start_from
     elif args.restore_from_checkpoint == 1:
-        restore_path = os.path.join(
-            args.output_dir, "%s_with_model.pt" % args.checkpoint_name
-        )
+        restore_path = os.path.join(args.output_dir, args.checkpoint_name)
 
     if restore_path is not None and os.path.isfile(restore_path):
         logger.info("Restoring from checkpoint {}".format(restore_path))
@@ -233,7 +231,6 @@ def main(args):
             if args.timing == 1:
                 torch.cuda.synchronize()
                 t1 = time.time()
-
             # Decide whether to use the batch for stepping on discriminator or
             # generator; an iteration consists of args.d_steps steps on the
             # discriminator followed by args.g_steps steps on the generator.
@@ -319,7 +316,8 @@ def main(args):
                 checkpoint["d_state"] = discriminator.state_dict()
                 checkpoint["d_optim_state"] = optimizer_d.state_dict()
                 checkpoint_path = os.path.join(
-                    args.output_dir, "%s_with_model.pt" % args.checkpoint_name
+                    args.output_dir,
+                    "{}_with_model_{}.pt".format(args.checkpoint_name, t),
                 )
                 logger.info("Saving checkpoint to {}".format(checkpoint_path))
                 torch.save(checkpoint, checkpoint_path)
@@ -327,21 +325,22 @@ def main(args):
 
                 # Save a checkpoint with no model weights by making a shallow
                 # copy of the checkpoint excluding some items
-                checkpoint_path = os.path.join(
-                    args.output_dir, "%s_no_model.pt" % args.checkpoint_name
-                )
-                logger.info("Saving checkpoint to {}".format(checkpoint_path))
-                key_blacklist = [
-                    "g_state",
-                    "d_state",
-                    "g_optim_state",
-                    "d_optim_state",
-                ]
-                small_checkpoint = {}
-                for k, v in checkpoint.items():
-                    if k not in key_blacklist:
-                        small_checkpoint[k] = v
-                torch.save(small_checkpoint, checkpoint_path)
+                # checkpoint_path = os.path.join(
+                #     args.output_dir,
+                #     "{}_with_no_model_{}.pt".format(args.checkpoint_name, t),
+                # )
+                # logger.info("Saving checkpoint to {}".format(checkpoint_path))
+                # key_blacklist = [
+                #     "g_state",
+                #     "d_state",
+                #     "g_optim_state",
+                #     "d_optim_state",
+                # ]
+                # small_checkpoint = {}
+                # for k, v in checkpoint.items():
+                #     if k not in key_blacklist:
+                #         small_checkpoint[k] = v
+                # torch.save(small_checkpoint, checkpoint_path)
                 logger.info("Done.")
 
             t += 1
@@ -431,8 +430,10 @@ def generator_step(args, batch, generator, discriminator, g_loss_fn, optimizer_g
         for start, end in seq_start_end.data:
             _g_l2_loss_rel = g_l2_loss_rel[start:end]
             _g_l2_loss_rel = torch.sum(_g_l2_loss_rel, dim=0)
-            # I choose max
-            _g_l2_loss_rel = torch.max(_g_l2_loss_rel) / torch.sum(loss_mask[start:end])
+            # I choose mean / not min
+            _g_l2_loss_rel = torch.mean(_g_l2_loss_rel) / torch.sum(
+                loss_mask[start:end]
+            )
             g_l2_loss_sum_rel += _g_l2_loss_rel
         losses["G_l2_loss_rel"] = g_l2_loss_sum_rel.item()
         loss += g_l2_loss_sum_rel
@@ -528,7 +529,7 @@ def plot_first_frame(
     ]
     fig = go.Figure()
     for idx, (real, fake) in enumerate(zip(traj_real, traj_fake)):
-        if idx == 3:
+        if idx == 5:
             break
         # real, fake = traj_real[0], traj_fake[0]
         fig.add_trace(
@@ -610,15 +611,15 @@ def check_accuracy(
                     .numpy(),
                     filename=f"{mode}_{iters}",
                 )
-                plot_first_frame(
-                    traj_real_rel.permute(1, 0, 2)[first_start:first_end, :, 0]
-                    .cpu()
-                    .numpy(),
-                    traj_fake_rel.permute(1, 0, 2)[first_start:first_end, :, 0]
-                    .cpu()
-                    .numpy(),
-                    filename=f"rel_{mode}_{iters}",
-                )
+                # plot_first_frame(
+                #     traj_real_rel.permute(1, 0, 2)[first_start:first_end, :, 0]
+                #     .cpu()
+                #     .numpy(),
+                #     traj_fake_rel.permute(1, 0, 2)[first_start:first_end, :, 0]
+                #     .cpu()
+                #     .numpy(),
+                #     filename=f"rel_{mode}_{iters}",
+                # )
                 plot = False
             scores_fake = discriminator(traj_fake, traj_fake_rel, seq_start_end)
             scores_real = discriminator(traj_real, traj_real_rel, seq_start_end)
@@ -654,4 +655,5 @@ def cal_l2_losses(
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
     main(args)

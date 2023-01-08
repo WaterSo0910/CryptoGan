@@ -6,6 +6,7 @@ import torch.utils.data as td
 from torchmetrics import MeanAbsolutePercentageError
 import os
 from typing import Tuple
+from utils import plot_dist
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class LSTMTrainer:
         t = 0
         checkpoint = {
             "args": args.__dict__,
-            "losses": defaultdict(list),
+            "losses": [],
             "sample_ts": [],
             "counters": {
                 "t": None,
@@ -92,6 +93,7 @@ class LSTMTrainer:
                 checkpoint["counters"]["t"] = t
                 checkpoint["counters"]["epoch"] = epoch
                 checkpoint["sample_ts"].append(t)
+                checkpoint["losses"].append(val_loss)
                 checkpoint["state"] = self.model.state_dict()
                 checkpoint["optim_state"] = self.optimizer.state_dict()
                 checkpoint_path = os.path.join(
@@ -184,9 +186,10 @@ class Trainer:
         self.real_label = real_label
         self.fake_label = fake_label
         self.mape = MeanAbsolutePercentageError()
+        self.l2_loss = torch.nn.MSELoss()
 
     def d_step(self, args, info: torch.Tensor, real: torch.Tensor, noise: torch.Tensor):
-        self.netD.zero_grad()
+        self.optimizerD.zero_grad()
         batch_size = real.size(0)
         label = torch.full(
             (batch_size,), self.real_label, dtype=torch.float, device=self.device
@@ -195,7 +198,6 @@ class Trainer:
         output = self.netD(real, info).view(-1)
         errD_real = self.criterion(output, label)
         errD_real.backward()
-        D_x = output.mean().item()
         ## D: Train with all-fake(G) batch
         info_g = info.view(-1, self.timeseries_size, self.nc)
 
@@ -204,10 +206,14 @@ class Trainer:
         fake = 0.9 * fake + 0.1 * torch.randn((fake.size()), device=self.device)
         output = self.netD(fake.detach(), info.detach()).view(-1)
         errD_fake = self.criterion(output, label)
-        errD = errD_real + errD_fake
         errD_fake.backward()
+        output = self.netD(fake.detach(), info.detach()).view(-1)
+        errD = errD_real + errD_fake
+        if args.l2_loss_weight > 0:
+            l2_loss = self.l2_loss(output, label)
+            l2_loss.backward()
+            errD += l2_loss
         self.optimizerD.step()
-
         return errD
 
     def g_step(
@@ -271,8 +277,8 @@ class Trainer:
                 ## D: Train with all-real batch
                 d_loss = self.d_step(args, info, real, noise)
                 g_loss, mape = self.g_step(args, info, real, mask, noise)
-                D_losses.append(d_loss)
-                G_losses.append(g_loss)
+                D_losses.append(d_loss.item())
+                G_losses.append(g_loss.item())
                 mapes.append(mape)
                 if (t % args.print_every == 0) or (
                     (epoch == self.num_epochs - 1)
@@ -314,7 +320,8 @@ class Trainer:
                     checkpoint["d_state"] = self.netD.state_dict()
                     checkpoint["d_optim_state"] = self.optimizerD.state_dict()
                     checkpoint_path = os.path.join(
-                        args.checkpoint_path, f"checkpoint_with_model_{t}_.pt"
+                        args.checkpoint_path,
+                        f"model_{t}_seq={args.seq_len}_mask={args.mask_rate}.pt",
                     )
                     logger.info("t = {} / {}".format(t + 1, args.num_iterations))
                     logger.info(
@@ -330,3 +337,6 @@ class Trainer:
                     torch.save(checkpoint, checkpoint_path)
                     logger.info("Done.")
                 t += 1
+        logger.info("Plot distribution")
+        plot_dist(G_losses, D_losses, epoch=epoch, iters=t)
+        return G_losses, D_losses

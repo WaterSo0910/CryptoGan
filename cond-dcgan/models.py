@@ -60,18 +60,19 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
         )
         self.main = nn.Sequential(
+            # state size. (ndf) x 64
             nn.Conv1d(ndf, ndf * 2, 4, 2, 1, bias=False),
             nn.BatchNorm1d(ndf * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 32
+            # state size. (ndf * 2) x 32
             nn.Conv1d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm1d(ndf * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*2) x 16
+            # state size. (ndf * 4) x 16
             nn.Conv1d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
             nn.BatchNorm1d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*8) x 4
+            # state size. (ndf * 8) x 8
             nn.Conv1d(ndf * 8, 1, 4, 1, 0, bias=False),
             nn.Sigmoid(),
         )
@@ -80,7 +81,8 @@ class Discriminator(nn.Module):
         x1 = self.input_layers(input)
         x2 = self.info_layers(info)
         x = torch.cat([x1, x2], 1)
-        return self.main(x)
+        x = self.main(x)
+        return x
 
 
 class LSTM(nn.Module):

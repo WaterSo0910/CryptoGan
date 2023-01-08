@@ -10,7 +10,7 @@ python train.py \
     --seq_len 64 \
     --skip 1 \
     --batch_size 128 \
-    --num_iterations 10000 \
+    --num_iterations 2000 \
     --num_epochs 200 \
     --learning_rate 1e-3 \
-    --print_every 1
+    --print_every 200

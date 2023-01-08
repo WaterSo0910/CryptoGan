@@ -65,7 +65,9 @@ def plot_res(args, fake: list, real: list, mask: list, **kwargs):
     fig.write_image(f"{args.image_path}/E{epoch}_I{iters}.png")
 
 
-def plot_dist(G_losses, D_losses):
+def plot_dist(G_losses, D_losses, **kwargs):
+    epoch = kwargs.get("epoch")
+    iters = kwargs.get("iters")
     df = pd.DataFrame(
         data={
             "G": G_losses,
@@ -75,4 +77,50 @@ def plot_dist(G_losses, D_losses):
     fig = px.line(
         df, y=df.columns, title="Generator and Discriminator Loss During Training"
     )
-    fig.write_image(f"loss.png")
+    fig.write_image(f"loss_E{epoch}_I{iters}.png")
+
+
+def plot_evaluation(args, fakes_dict: dict[list], real: list, mask: list, **kwargs):
+    iters = kwargs.get("iters")
+    path = kwargs.get("path")
+    colors = [
+        "#D95D39",
+        "#F0A202",
+        "#3587A4",
+        "#7B5C91",
+        "#579B4E",
+        "#725E54",
+        "#2A2B2A",
+        "#CE7B91",
+    ]
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=list(range(args.seq_len)),
+            y=real,
+            mode="lines+markers",
+            name="Real",
+            marker_color="#A6ACEC",
+        )
+    )
+    for i, (name, fake) in enumerate(fakes_dict.items()):
+        # fig.add_trace(
+        #     go.Scatter(
+        #         x=list(range(args.seq_len)),
+        #         y=fake,
+        #         mode="lines",
+        #         name=name,
+        #         marker_color=colors[i],
+        #     )
+        # )
+        fig.add_trace(
+            go.Scatter(
+                x=list(range(args.seq_len)),
+                y=[f if mask[i] == 0 else None for i, f in enumerate(fake)],
+                mode="markers",
+                name=f"{name}(generate)",
+                marker_color=colors[i],
+            )
+        )
+    fig.write_image(f"{args.image_path}/eval_{iters}.png")

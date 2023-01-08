@@ -26,16 +26,21 @@ from models import Generator, Discriminator, LSTM
 from trainer import Trainer, LSTMTrainer
 from utils import plot_dist
 
-manualSeed = 880910
-random.seed(manualSeed)
-torch.manual_seed(manualSeed)
-torch.backends.cudnn.benchmark = True
+
+def set_seed(seed: int = 42) -> None:
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+set_seed(880910)
 
 parser = argparse.ArgumentParser()
 FORMAT = "[%(levelname)s: %(filename)s: %(lineno)4d]: %(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT, stream=sys.stdout)
 logger = logging.getLogger(__name__)
-
 
 # Dataset options
 parser.add_argument("--datapath", default="../data/Binance_ETHUSDT_1h.csv", type=str)
@@ -59,6 +64,7 @@ parser.add_argument("--noise_dim", default=10, type=int)
 parser.add_argument("--ngf", default=64, type=int)
 parser.add_argument("--ndf", default=64, type=int)
 parser.add_argument("--learning_rate", default=2e-4, type=float)
+parser.add_argument("--l2_loss_weight", default=1.0, type=float)
 
 # LSTM option
 parser.add_argument("--num_layers", default=1, type=int)
@@ -143,15 +149,14 @@ def main(args):
             nz=args.noise_dim,
             timeseries_size=args.seq_len,
             num_epochs=args.num_epochs,
-            real_label=0.9,
-            fake_label=0.1,
+            real_label=0.8,
+            fake_label=0.2,
         )
 
-        G_losses, D_losses = trainer.train(
+        trainer.train(
             args=args,
         )
-        logger.info("Plot distribution")
-        plot_dist(G_losses, D_losses)
+
     elif args.model == "lstm":
         obs_len = int(args.seq_len * (1 - args.mask_rate))
         pred_len = args.seq_len - obs_len
