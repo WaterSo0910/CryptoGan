@@ -66,15 +66,23 @@ class LSTMTrainer:
                     [batch_size, self.obs_len + self.pred_len]
                 )
                 self.model.train()
-                out = self.model(real[:, : self.obs_len, None])
-                out_gt = real[:, self.obs_len].view(-1, 1)
-                assert out_gt.size() == torch.Size([batch_size, 1]), out_gt.size()
+                input = real[:, : self.obs_len]
+                outs = torch.zeros(batch_size, self.pred_len).to(self.device)
+                for p in range(self.pred_len):
+                    out = self.model(input[:, :, None])
+                    outs[:, p] = out.view(-1)
+                    input = torch.concat((input, out), dim=1)
+                    input = input[:, 1:]
+                out_gt = real[:, self.obs_len :]
+                assert out_gt.size() == torch.Size(
+                    [batch_size, self.pred_len]
+                ), out_gt.size()
                 self.optimizer.zero_grad()
-                assert out_gt.size() == out.size(), "{}{}".format(
-                    out_gt.size(), out.size()
+                assert out_gt.size() == outs.size(), "{}{}".format(
+                    out_gt.size(), outs.size()
                 )
-                loss = self.criterion(out, out_gt)
-                mape = self.mape(out, out_gt)
+                loss = self.criterion(outs, out_gt)
+                mape = self.mape(outs, out_gt)
                 loss.backward()
                 self.optimizer.step()
                 losses.append(loss)
@@ -115,7 +123,7 @@ class LSTMTrainer:
         mapes = []
         self.model.eval()
         with torch.no_grad():
-            for i, batch in enumerate(self.train_dataloader, 0):
+            for i, batch in enumerate(self.test_dataloader, 0):
                 batch = [tensor.cuda() for tensor in batch]
                 (info, mask, real) = batch
                 batch_size = real.size(0)
