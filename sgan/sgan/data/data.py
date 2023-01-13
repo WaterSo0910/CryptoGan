@@ -85,7 +85,7 @@ def read_file(
             time_le.fit(df["Date"])
         df["Date"] = time_le.transform(df["Date"])
         df["Symbol"] = token_le.transform(df["Symbol"])
-        df = df.filter(["Date", "Symbol", "Normalized Close"])
+        df = df.filter(["Date", "Symbol", "MinMaxed Close"])
         data_list.append(df.values)
     data_list = np.asarray(data_list, dtype=np.float64)
     data_list = data_list.transpose((1, 0, 2))

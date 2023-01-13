@@ -3,7 +3,7 @@ import logging
 from utils import plot_res, plot_dis
 from collections import defaultdict
 import torch.utils.data as td
-from torchmetrics import MeanAbsolutePercentageError
+from torchmetrics import MeanAbsolutePercentageError, MeanAbsoluteError
 import os
 from typing import Tuple
 from utils import plot_dist
@@ -34,6 +34,7 @@ class LSTMTrainer:
         self.num_epochs = num_epochs
         self.criterion = criterion
         self.mape = MeanAbsolutePercentageError().to(device)
+        self.mae = MeanAbsoluteError().to(device)
 
     def train(self, args):
         mapes, losses = [], []
@@ -96,6 +97,8 @@ class LSTMTrainer:
                 logger.info("  Total MAPE: {:.3f}".format(sum(mapes) / len(mapes)))
 
             val_loss, val_mape = self.validate(args, epoch=epoch + 1, iters=t + 1)
+            logger.info("\tValidation Loss: {:.3f}".format(val_loss))
+            logger.info("\tValidation MAPE: {:.3f}".format(val_mape))
             if best_loss == None or val_mape < best_loss:
                 best_loss = val_mape
                 checkpoint["counters"]["t"] = t
@@ -112,15 +115,13 @@ class LSTMTrainer:
                         t + 1, args.num_iterations
                     )
                 )
-                logger.info("\tAvg Loss: {:.3f}".format(val_loss))
-                logger.info("\tAvg MAPE: {:.3f}".format(val_mape))
                 logger.info("Saving checkpoint to {}".format(checkpoint_path))
                 torch.save(checkpoint, checkpoint_path)
                 logger.info("Done.")
 
     def validate(self, args, epoch, iters) -> Tuple[float, float]:
         losses = []
-        mapes = []
+        maes = []
         self.model.eval()
         with torch.no_grad():
             for i, batch in enumerate(self.test_dataloader, 0):
@@ -147,10 +148,10 @@ class LSTMTrainer:
                 assert out_gt.size() == torch.Size([batch_size, self.pred_len])
                 assert outs.size() == torch.Size([batch_size, self.pred_len])
                 loss = self.criterion(outs, out_gt)
-                mape = self.mape(outs, out_gt)
+                mae = self.mae(outs, out_gt)
                 losses.append(loss)
-                mapes.append(mape)
-                if i == 0:
+                maes.append(mae)
+                if i == 1:
                     plot_res(
                         args,
                         real[0, : self.obs_len].view(-1).tolist()
@@ -160,7 +161,7 @@ class LSTMTrainer:
                         epoch=epoch,
                         iters=iters,
                     )
-        return sum(losses) / len(losses), sum(mapes) / len(mapes)
+        return sum(losses) / len(losses), sum(maes) / len(maes)
 
 
 class Trainer:

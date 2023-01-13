@@ -1,0 +1,18 @@
+python train.py \
+    --datapath ../data/Binance_ETHUSDT_1h.csv \
+    --image_path lstm_1 \
+    --checkpoint_path lstm_1_checkpoints \
+    --model lstm \
+    --num_layers 2 \
+    --hidden_size 64 \
+    --dropout 0.3 \
+    --mask_where end \
+    --mask_rate 0.1 \
+    --test_size 0.3 \
+    --seq_len 10 \
+    --skip 5 \
+    --batch_size 128 \
+    --num_iterations 2000 \
+    --num_epochs 1000 \
+    --learning_rate 1e-3 \
+    --print_every 200

@@ -80,6 +80,41 @@ def plot_dist(G_losses, D_losses, **kwargs):
     fig.write_image(f"loss_E{epoch}_I{iters}.png")
 
 
+def plot_2_seqs(args, trues: list, preds: list, **kwargs):
+    fill_type = kwargs.get("fill_type")
+    colors = [
+        "#D95D39",
+        "#F0A202",
+        "#3587A4",
+        "#7B5C91",
+        "#579B4E",
+        "#725E54",
+        "#2A2B2A",
+        "#CE7B91",
+    ]
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=len(trues),
+            y=trues,
+            mode="lines",
+            name="Trues",
+            marker_color="#7B5C91",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=len(preds),
+            y=preds,
+            mode="lines",
+            name="Preds",
+            marker_color="#A6ACEC",
+        )
+    )
+    fig.write_image(f"{args.image_path}/eval_{fill_type}.png")
+
+
 def plot_evaluation(args, fakes_dict: dict[list], real: list, mask: list, **kwargs):
     iters = kwargs.get("iters")
     path = kwargs.get("path")

@@ -1,8 +1,8 @@
 export PYTHONPATH='D:\CryptoGan\sgan'
 python scripts/train.py \
   --obs_len 40 \
-  --pred_len 24 \
-  --skip 8 \
+  --pred_len 20 \
+  --skip 10 \
   --encoder_h_dim_g 64 \
   --encoder_h_dim_d 128\
   --decoder_h_dim 64 \
@@ -16,8 +16,8 @@ python scripts/train.py \
   --pool_every_timestep 1 \
   --l2_loss_weight 1 \
   --batch_norm 1 \
-  --dropout 0.2 \
-  --batch_size 128 \
+  --dropout 0.0 \
+  --batch_size 32 \
   --g_learning_rate 1e-3 \
   --g_steps 1 \
   --d_learning_rate 1e-3 \
@@ -26,8 +26,8 @@ python scripts/train.py \
   --print_every 10 \
   --num_iterations 2000 \
   --num_epochs 200 \
-  --pooling_type None \
-  --pool_every_timestep 0 \
+  --pooling_type pool_net \
+  --pool_every_timestep 1 \
   --best_k 10 \
   --checkpoint_name gan_test \
   --restore_from_checkpoint 0 \
